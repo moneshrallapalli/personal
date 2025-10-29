@@ -29,37 +29,53 @@ int rudp_save_peer(int sock, const struct sockaddr *sa, socklen_t slen);
 
 
 static int port_to_str(char out[12], int port) {
-    if (port <= 0) return -1;
-    if (port > 65535) return -1;
+    if (port <= 0) {
+        return -1;
+    }
+    if (port > 65535) {
+        return -1;
+    }
 
-    
     char tmp[12];
     int i = 0;
     int p = port;
+
     while (p > 0 && i < 11) {
         int digit = p % 10;
         tmp[i] = (char)('0' + digit);
         i = i + 1;
         p = p / 10;
     }
-    if (p > 0) return -1; 
-    if (i == 0) { tmp[i++] = '0'; }
 
-   
+    if (p > 0) {
+        return -1;
+    }
+
+    if (i == 0) {
+        tmp[i] = '0';
+        i = i + 1;
+    }
+
     int j = 0;
+    int out_idx = 0;
+
     while (j < i) {
-        out[j] = tmp[i - 1 - j];
+        int source_idx = i - 1 - j;
+        out[out_idx] = tmp[source_idx];
+        out_idx = out_idx + 1;
         j = j + 1;
     }
-    out[i] = '\0';
+
+    out[out_idx] = '\0';
     return 0;
 }
 
 static void zero_bytes(void *p, size_t n) {
     unsigned char *b = (unsigned char*)p;
     size_t i = 0;
+
     while (i < n) {
-        b[i] = 0u;
+        b[i] = 0;
         i = i + 1;
     }
 }
@@ -68,21 +84,25 @@ static void zero_bytes(void *p, size_t n) {
 static int set_recv_timeout_20ms(int sock) {
     struct timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 20000;  
-    return setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    tv.tv_usec = 20000;
+
+    int result = setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    return result;
 }
 
 
 
 int sans_connect(const char *host, int port, int protocol) {
-    
-    if (host == 0) return -1;
+    if (host == 0) {
+        return -1;
+    }
 
-    
     char service[12];
-    if (port_to_str(service, port) != 0) return -1;
+    int port_result = port_to_str(service, port);
+    if (port_result != 0) {
+        return -1;
+    }
 
-    
     if (protocol == IPPROTO_TCP) {
         int final_fd = -1;
 
@@ -95,7 +115,9 @@ int sans_connect(const char *host, int port, int protocol) {
         hints.ai_protocol = IPPROTO_TCP;
 
         int gai_ok = getaddrinfo(host, service, &hints, &results);
-        if (gai_ok != 0 || results == 0) return -1;
+        if (gai_ok != 0 || results == 0) {
+            return -1;
+        }
 
         struct addrinfo *p = results;
         while (p != 0) {
@@ -104,13 +126,15 @@ int sans_connect(const char *host, int port, int protocol) {
                 int ok_conn = connect(fd_try, p->ai_addr, p->ai_addrlen);
                 if (ok_conn == 0) {
                     final_fd = fd_try;
-                    p = 0; // done
+                    p = 0;
                     break;
                 } else {
                     close(fd_try);
                 }
             }
-            if (p != 0) p = p->ai_next;
+            if (p != 0) {
+                p = p->ai_next;
+            }
         }
 
         freeaddrinfo(results);
@@ -173,22 +197,21 @@ int sans_connect(const char *host, int port, int protocol) {
                                          &fromlen);
 
                     if (r < 0) {
-                        
                         if (errno == EAGAIN || errno == EWOULDBLOCK ||
                             errno == ETIMEDOUT || errno == EINTR) {
-                           
+
                         } else {
-                            
+
                         }
                     } else {
-                        
+
                         int is_syn = (reply.type & RUDP_SYN) ? 1 : 0;
                         int is_ack = (reply.type & RUDP_ACK) ? 1 : 0;
                         if (is_syn == 1 && is_ack == 1) {
-                            
+
                             int saved = rudp_save_peer(fd, (struct sockaddr*)&from, fromlen);
                             if (saved == 0) {
-                                
+
                                 rudp_packet_t ack_pkt;
                                 zero_bytes(&ack_pkt, sizeof(ack_pkt));
                                 ack_pkt.type = RUDP_ACK;
@@ -203,10 +226,10 @@ int sans_connect(const char *host, int port, int protocol) {
                                 final_fd = fd;
                                 connected = 1;
                             } else {
-                                
+
                             }
                         } else {
-                           
+
                         }
                     }
                 }

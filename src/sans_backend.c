@@ -36,8 +36,8 @@ void enqueue_packet(int sock, const char* buf, int len) {
   }
 
   int idx = head;
-
   int total_size = sizeof(rudp_packet_t) + len;
+
   send_window[idx].packet = (rudp_packet_t*)malloc(total_size);
 
   if (send_window[idx].packet == NULL) {
@@ -46,12 +46,12 @@ void enqueue_packet(int sock, const char* buf, int len) {
   }
 
   send_window[idx].packet->type = DAT;
-
   memcpy(send_window[idx].packet->payload, buf, len);
+
   send_window[idx].socket = sock;
   send_window[idx].packetlen = total_size;
 
-  count += 1;
+  count = count + 1;
 
   pthread_mutex_unlock(&send_window_lock);
 }
@@ -64,7 +64,7 @@ static void dequeue_packet(void) {
     send_window[head].packet = NULL;
   }
 
-  count -= 1;
+  count = count - 1;
 
   pthread_cond_signal(&send_window_cond);
 
@@ -72,12 +72,15 @@ static void dequeue_packet(void) {
 }
 
 void* rudp_backend(void* unused) {
-  send_window = malloc(sizeof(swnd_entry_t) * swnd_size);
+  int malloc_size = sizeof(swnd_entry_t) * swnd_size;
+  send_window = malloc(malloc_size);
 
   while (1) {
     pthread_mutex_lock(&send_window_lock);
 
-    if (count > 0 && send_window[head].packet != NULL) {
+    int has_packet = (count > 0 && send_window[head].packet != NULL) ? 1 : 0;
+
+    if (has_packet == 1) {
       int sock = send_window[head].socket;
       rudp_packet_t* pkt = send_window[head].packet;
       int len = send_window[head].packetlen;
@@ -97,7 +100,8 @@ void* rudp_backend(void* unused) {
       timeout.tv_sec = 0;
       timeout.tv_usec = 100000;
 
-      if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+      int opt_result = setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+      if (opt_result < 0) {
         usleep(10000);
         continue;
       }
@@ -113,8 +117,11 @@ void* rudp_backend(void* unused) {
         if (recv_bytes > 0) {
           rudp_packet_t* ack_pkt = (rudp_packet_t*)ack_buf;
 
-          if (ack_pkt->type == ACK && ack_pkt->seqnum == send_seqnum) {
-            send_seqnum++;
+          int is_ack = (ack_pkt->type == ACK) ? 1 : 0;
+          int seqnum_match = (ack_pkt->seqnum == send_seqnum) ? 1 : 0;
+
+          if (is_ack == 1 && seqnum_match == 1) {
+            send_seqnum = send_seqnum + 1;
             dequeue_packet();
             break;
           }

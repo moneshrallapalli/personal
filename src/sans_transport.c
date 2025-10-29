@@ -22,52 +22,72 @@ static void copy_bytes(void *dst, const void *src, size_t n) {
     unsigned char *d = (unsigned char*)dst;
     const unsigned char *s = (const unsigned char*)src;
     size_t i = 0;
-    while (i < n) { d[i] = s[i]; i = i + 1; }
+    while (i < n) {
+        d[i] = s[i];
+        i = i + 1;
+    }
 }
 
 static int addrbook_find_existing(int sock) {
     int i = 0;
+
     while (i < RUDP_ADDRBOOK_CAP) {
-        if (g_addrbook[i].in_use == 1) {
-            if (g_addrbook[i].sock == sock) {
+        int is_in_use = g_addrbook[i].in_use;
+
+        if (is_in_use == 1) {
+            int current_sock = g_addrbook[i].sock;
+
+            if (current_sock == sock) {
                 return i;
             }
         }
+
         i = i + 1;
     }
+
     return -1;
 }
 
 static int addrbook_find_free(void) {
     int i = 0;
+
     while (i < RUDP_ADDRBOOK_CAP) {
-        if (g_addrbook[i].in_use == 0) {
+        int is_in_use = g_addrbook[i].in_use;
+
+        if (is_in_use == 0) {
             return i;
         }
+
         i = i + 1;
     }
+
     return -1;
 }
 
 static int addrbook_set(int sock, const struct sockaddr *sa, socklen_t slen) {
-    if (sa == 0) { errno = EINVAL; return -1; }
+    if (sa == 0) {
+        errno = EINVAL;
+        return -1;
+    }
     if ((size_t)slen > (size_t)sizeof(struct sockaddr_storage)) {
-        errno = EINVAL; return -1;
+        errno = EINVAL;
+        return -1;
     }
 
-    
+
     int idx = addrbook_find_existing(sock);
+
     if (idx >= 0) {
         copy_bytes(&g_addrbook[idx].addr, sa, (size_t)slen);
         g_addrbook[idx].addrlen = slen;
         return 0;
     }
 
-    
     int free_idx = addrbook_find_free();
+
     if (free_idx >= 0) {
         g_addrbook[free_idx].in_use = 1;
-        g_addrbook[free_idx].sock   = sock;
+        g_addrbook[free_idx].sock = sock;
         copy_bytes(&g_addrbook[free_idx].addr, sa, (size_t)slen);
         g_addrbook[free_idx].addrlen = slen;
         return 0;
@@ -78,12 +98,21 @@ static int addrbook_set(int sock, const struct sockaddr *sa, socklen_t slen) {
 }
 
 static int addrbook_get(int sock, struct sockaddr *sa, socklen_t *salen) {
-    if (sa == 0 || salen == 0) { errno = EINVAL; return -1; }
+    if (sa == 0 || salen == 0) {
+        errno = EINVAL;
+        return -1;
+    }
 
     int idx = addrbook_find_existing(sock);
-    if (idx < 0) { errno = ENOENT; return -1; }
+    if (idx < 0) {
+        errno = ENOENT;
+        return -1;
+    }
 
-    if (*salen < g_addrbook[idx].addrlen) { errno = EINVAL; return -1; }
+    if (*salen < g_addrbook[idx].addrlen) {
+        errno = EINVAL;
+        return -1;
+    }
 
     copy_bytes(sa, &g_addrbook[idx].addr, (size_t)g_addrbook[idx].addrlen);
     *salen = g_addrbook[idx].addrlen;
@@ -124,9 +153,7 @@ int sans_recv_pkt(int socket, char* buf, int len) {
     struct sockaddr_storage src_addr;
     socklen_t src_len = sizeof(src_addr);
 
-    
     while (1) {
-        
         ssize_t recv_bytes = recvfrom(socket, pkt_buf, sizeof(pkt_buf), 0,
                                        (struct sockaddr*)&src_addr, &src_len);
 
@@ -134,23 +161,17 @@ int sans_recv_pkt(int socket, char* buf, int len) {
             return -1;
         }
 
-        
         rudp_packet_t* pkt = (rudp_packet_t*)pkt_buf;
 
-        
         if (pkt->seqnum != recv_seqnum) {
-            
             rudp_packet_t ack_pkt = {0};
             ack_pkt.type = ACK;
-            
             ack_pkt.seqnum = recv_seqnum - 1;
             sendto(socket, (void*)&ack_pkt, sizeof(ack_pkt), 0,
                    (struct sockaddr*)&src_addr, src_len);
-            
             continue;
         }
 
-        
         int payload_len = recv_bytes - sizeof(rudp_packet_t);
         if (payload_len > len) {
             payload_len = len;
@@ -159,14 +180,12 @@ int sans_recv_pkt(int socket, char* buf, int len) {
             memcpy(buf, pkt->payload, payload_len);
         }
 
-        
         rudp_packet_t ack_pkt = {0};
         ack_pkt.type = ACK;
         ack_pkt.seqnum = recv_seqnum;
         sendto(socket, (void*)&ack_pkt, sizeof(ack_pkt), 0,
                (struct sockaddr*)&src_addr, src_len);
 
-        
         recv_seqnum++;
 
         return payload_len;
